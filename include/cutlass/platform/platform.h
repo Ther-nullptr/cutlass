@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,7 +55,7 @@
  *   (2) Re-implementations of STL functions and types:
  *       - C++ features that need the \p __device__ annotation.  These are
  *         placed into the \p platform namespace.
- *           - \p abs
+ *           - \p abs 
  *           - \p plus
  *           - \p less
  *           - \p greater
@@ -452,6 +452,7 @@ struct is_base_of
                                            typename remove_cv<DerivedT>::type>::value) ||
                             (is_same<typename remove_cv<BaseT>::type,
                                      typename remove_cv<DerivedT>::type>::value)> {};
+
 #else
 
 using std::is_same;
@@ -572,6 +573,20 @@ struct is_trivially_copyable
 using std::is_trivially_copyable;
 
 #endif
+
+//-----------------------------------------------------------------------------
+// bit_cast <bit>
+//-----------------------------------------------------------------------------
+
+template< class To, class From >
+constexpr To CUTLASS_HOST_DEVICE bit_cast(const From& from ) noexcept;
+
+template <class To, class From>
+constexpr To CUTLASS_HOST_DEVICE bit_cast(const From& src) noexcept
+{
+  static_assert(sizeof(To) == sizeof(From), "sizes must match");
+  return reinterpret_cast<To const &>(src);
+}
 
 //-----------------------------------------------------------------------------
 // Alignment and layout utilities
@@ -842,7 +857,7 @@ struct numeric_limits<uint32_t> {
   CUTLASS_HOST_DEVICE
   static constexpr uint32_t lowest() noexcept { return 0;}
   CUTLASS_HOST_DEVICE
-  static constexpr uint32_t max() noexcept { return 4294967295;}
+  static constexpr uint32_t max() noexcept { return 4294967295U;}
   static constexpr bool is_integer = true;
 };
 
@@ -851,7 +866,7 @@ struct numeric_limits<uint16_t> {
   CUTLASS_HOST_DEVICE
   static constexpr uint16_t lowest() noexcept { return 0;}
   CUTLASS_HOST_DEVICE
-  static constexpr uint16_t max() noexcept { return 65535;}
+  static constexpr uint16_t max() noexcept { return 65535U;}
   static constexpr bool is_integer = true;
 };
 
@@ -860,9 +875,19 @@ struct numeric_limits<uint8_t> {
   CUTLASS_HOST_DEVICE
   static constexpr uint8_t lowest() noexcept { return 0;}
   CUTLASS_HOST_DEVICE
-  static constexpr uint8_t max() noexcept { return 255;}
+  static constexpr uint8_t max() noexcept { return 255U;}
   static constexpr bool is_integer = true;
 };
+
+#if !defined(__CUDACC_RTC__)
+template <>
+struct numeric_limits<float> {
+  CUTLASS_HOST_DEVICE
+  static constexpr float infinity() noexcept { return bit_cast<float, int32_t>(0x7f800000);}
+  static constexpr bool is_integer = false;
+  static constexpr bool has_infinity = true;
+};
+#endif
 
 }  // namespace platform
 }  // namespace cutlass

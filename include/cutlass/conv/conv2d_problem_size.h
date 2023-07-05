@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,13 +46,6 @@
 */
 
 #pragma once
-
-
-#if defined(__CUDACC_RTC__)
-#include <cuda/std/cmath>
-#else
-#include <cmath>
-#endif
 
 #include "cutlass/cutlass.h"
 #include "cutlass/tensor_coord.h"
@@ -221,12 +214,12 @@ public:
   CUTLASS_HOST_DEVICE
   bool operator==(Conv2dProblemSize const &conv) const {
     return (
-      (N == conv.N) && (W == conv.H) && (W == conv.W) && (C == conv.C) &&
+      (N == conv.N) && (H == conv.H) && (W == conv.W) && (C == conv.C) &&
       (K == conv.K) && (R == conv.R) && (S == conv.S) &&
       (P == conv.P) && (Q == conv.Q) &&
       (pad_h == conv.pad_h) && (pad_w == conv.pad_w) &&
       (stride_h == conv.stride_h) && (stride_w == conv.stride_w) &&
-      (dilation_h == conv.dilation_h) && (dilation_h == conv.dilation_h)
+      (dilation_h == conv.dilation_h) && (dilation_w == conv.dilation_w)
     );  
   }
 
@@ -247,7 +240,7 @@ public:
   CUTLASS_HOST_DEVICE
   cutlass::Tensor4DCoord filter_extent() const {
 
-    return cutlass::Tensor4DCoord ({K, R, S, C});
+    return cutlass::Tensor4DCoord ({K, R, S, C / groups});
   }
 
   /// Returns output extent as Tensor4DCoord
@@ -268,7 +261,7 @@ public:
   CUTLASS_HOST_DEVICE
   int64_t filter_size() const {
 
-    return (K * R * S * C);
+    return (K * R * S * C / groups);
   }
 
   /// Returns output size in number of elements
@@ -278,7 +271,7 @@ public:
     return (N * P * Q * K);
   }
   
-  /// Returns output extent as Tensor4DCoord
+  /// Returns padding as Tensor4DCoord
   CUTLASS_HOST_DEVICE
   cutlass::Tensor4DCoord padding() const {
 
@@ -336,7 +329,7 @@ cutlass::gemm::GemmCoord implicit_gemm_problem_size(
     return gemm::GemmCoord(
       problem_size.N * problem_size.P * problem_size.Q,
       problem_size.K,
-      problem_size.R * problem_size.S * problem_size.C
+      problem_size.R * problem_size.S * problem_size.C / problem_size.groups
     );
   case Operator::kDgrad:
     return gemm::GemmCoord(
@@ -362,60 +355,158 @@ int implicit_gemm_k_iterations(
   Operator conv_operator, 
   int threadblock_K, 
   Conv2dProblemSize const &problem_size,
-  IteratorAlgorithm algorithm = IteratorAlgorithm::kAnalytic) {
+  IteratorAlgorithm algorithm = IteratorAlgorithm::kAnalytic,
+  GroupMode group_mode = GroupMode::kNone,
+  int threadblock_N = 0) {
 
   int iterations = 0;
 
-  if (algorithm == IteratorAlgorithm::kFixedChannels) {
+  if (group_mode == GroupMode::kNone) {
 
-    int positions_per_iteration = threadblock_K / problem_size.C;
-    switch (conv_operator) {
-    case Operator::kFprop:
-      iterations = (problem_size.R * problem_size.S + positions_per_iteration - 1 ) / positions_per_iteration;
-      break;
+    if (algorithm == IteratorAlgorithm::kFixedChannels) {
 
-    default:
-      break;
+      int positions_per_iteration = threadblock_K / problem_size.C;
+      switch (conv_operator) {
+      case Operator::kFprop:
+        iterations = (problem_size.R * problem_size.S + positions_per_iteration - 1 ) / positions_per_iteration;
+        break;
+
+      default:
+        break;
+      }
     }
-  }
-  else if (algorithm == IteratorAlgorithm::kFewChannels) {
+    else if (algorithm == IteratorAlgorithm::kFewChannels) {
 
-    switch (conv_operator) {
-    case Operator::kFprop:
-      iterations = (problem_size.R * problem_size.S * problem_size.C + threadblock_K - 1 ) / threadblock_K;
-      break;
+      switch (conv_operator) {
+      case Operator::kFprop:
+        iterations = (problem_size.R * problem_size.S * problem_size.C + threadblock_K - 1 ) / threadblock_K;
+        break;
 
-    default:
-      break;
+      default:
+        break;
+      }
     }
-  }
-  else {
-    int elements_per_split_k_slice = 0;
+    else {
+      int elements_per_split_k_slice = 0;
 
-    switch (conv_operator) {
-    case Operator::kFprop:
-      elements_per_split_k_slice = (problem_size.C + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
-      iterations = problem_size.R * problem_size.S * ((elements_per_split_k_slice + threadblock_K - 1) / threadblock_K);
-      break;
+      switch (conv_operator) {
+      case Operator::kFprop:
+        elements_per_split_k_slice = (problem_size.C + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
+        iterations = problem_size.R * problem_size.S * ((elements_per_split_k_slice + threadblock_K - 1) / threadblock_K);
+        break;
 
-    case Operator::kDgrad:
-      elements_per_split_k_slice = (problem_size.K + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
-      iterations = problem_size.R * problem_size.S * ((elements_per_split_k_slice + threadblock_K - 1) / threadblock_K);
-      break;
+      case Operator::kDgrad:
+        elements_per_split_k_slice = (problem_size.K + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
+        iterations = problem_size.R * problem_size.S * ((elements_per_split_k_slice + threadblock_K - 1) / threadblock_K);
+        break;
 
-    case Operator::kWgrad:
-      elements_per_split_k_slice = (problem_size.N * problem_size.P * problem_size.Q + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
-      iterations = (elements_per_split_k_slice + threadblock_K - 1) / threadblock_K;
-      break;
+      case Operator::kWgrad:
+        elements_per_split_k_slice = (problem_size.N * problem_size.P * problem_size.Q + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
+        iterations = (elements_per_split_k_slice + threadblock_K - 1) / threadblock_K;
+        break;
 
-    default:
-      break;
+      default:
+        break;
+      }
     }
+
+  } else if (group_mode == GroupMode::kDepthwise) {
+    int channels_per_cta = threadblock_N;
+
+    if (algorithm == IteratorAlgorithm::kAnalytic) {
+      switch (conv_operator) {
+        case Operator::kFprop:
+          iterations = problem_size.R * problem_size.S *
+                       ((channels_per_cta + threadblock_K - 1) / threadblock_K);
+          break;
+
+        default:
+          break;
+      }
+    }
+  } else {  // Group conv
+
+    int channels_per_group = problem_size.C / problem_size.groups;
+    int k_per_group = problem_size.K / problem_size.groups;
+
+    if (algorithm == IteratorAlgorithm::kAnalytic) {
+      switch (conv_operator) {
+        case Operator::kFprop:
+          iterations = problem_size.R * problem_size.S * ((channels_per_group + threadblock_K - 1) / threadblock_K);
+          // In group conv, if k_per_group < threadblock_N, one Threadblock will calculate multiple groups
+          if (problem_size.groups != 1) {
+            if (k_per_group < threadblock_N) {
+              iterations *= threadblock_N / k_per_group;
+            }
+          }
+          break;
+
+        default:
+          break;
+      }
+    } else if (algorithm == IteratorAlgorithm::kOptimized) {
+      // Current optimized iterator only support GroupMode::kSingleGroup
+      if (group_mode == GroupMode::kSingleGroup) {
+        switch (conv_operator) {
+          case Operator::kFprop:
+            iterations = problem_size.R * problem_size.S * ((channels_per_group + threadblock_K - 1) / threadblock_K);
+            break;
+
+          default:
+            break;
+        }
+      }
+    }
+
   }
 
   return iterations;
 }
 
+
+template <int N = 1, int Output_P = 1, int Output_Q = 1>
+CUTLASS_HOST_DEVICE
+int depthwise_gemm_k_iterations(
+  Operator conv_operator, 
+  int threadblock_K, 
+  Conv2dProblemSize const &problem_size,
+  IteratorAlgorithm algorithm = IteratorAlgorithm::kAnalytic,
+  GroupMode group_mode = GroupMode::kNone,
+  int threadblock_N = 0) {
+
+    int n =  problem_size.N;
+    int p = (problem_size.P + Output_P - 1) /  Output_P;
+    int q = (problem_size.Q + Output_Q - 1) /  Output_Q;
+
+    int iterations = (n * p * q + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
+    return iterations;
+}
+
+
+CUTLASS_HOST_DEVICE
+int implicit_gemm_k_iterations_per_channel(
+    Operator conv_operator,
+    int threadblock_K,
+    Conv2dProblemSize const &problem_size,
+    IteratorAlgorithm algorithm = IteratorAlgorithm::kAnalytic) {
+
+  int iterations = 0; //0 means not applicable
+  if (algorithm == IteratorAlgorithm::kAnalytic || algorithm == IteratorAlgorithm::kOptimized) {
+    switch (conv_operator) {
+      case Operator::kFprop:
+        iterations = problem_size.R * problem_size.S;
+        break;
+
+      case Operator::kDgrad:
+        iterations = problem_size.R * problem_size.S;
+        break;
+
+      default:
+        break;
+    }
+  }
+  return iterations;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //  Mapping function (ImplicitGemm A, B, C -> Conv Activation, Filter, Output)
@@ -537,12 +628,12 @@ void strided_dgrad_starting_coords(
   // function locals for remainder by fast divmod
   int pad_h_rem_, pad_w_rem_;
 
-  // start_h  = platform::abs(problem_size.stride_h - ((problem_size.pad_h % problem_size.stride_h) - r)) % problem_size.stride_h;
+  // start_h  = std::abs(problem_size.stride_h - ((problem_size.pad_h % problem_size.stride_h) - r)) % problem_size.stride_h;
   stride_h_divmod.divmod(pad_h_rem_, problem_size.pad_h);
   int r_ = absolute_value(problem_size.stride_h - (pad_h_rem_ - r));
   stride_h_divmod.divmod(start_h, r_);
 
-  //start_w  = platform::abs(problem_size.stride_w - ((problem_size.pad_w % problem_size.stride_w) - s)) % problem_size.stride_w;
+  //start_w  = std::abs(problem_size.stride_w - ((problem_size.pad_w % problem_size.stride_w) - s)) % problem_size.stride_w;
   stride_w_divmod.divmod(pad_w_rem_, problem_size.pad_w);
   int s_ = absolute_value(problem_size.stride_w - (pad_w_rem_ - s));
   stride_w_divmod.divmod(start_w, s_);

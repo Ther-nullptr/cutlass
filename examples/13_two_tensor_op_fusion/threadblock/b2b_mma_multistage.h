@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -119,8 +119,10 @@ public:
   using Shape0 = Shape0_;
   ///< Iterates over tiles of A operand in global memory
   using IteratorA0 = IteratorA0_;
+  using IteratorA = IteratorA0;
   ///< Iterates over tiles of B operand in global memory
   using IteratorB0 = IteratorB0_;
+  using IteratorB = IteratorB0;
   ///< Policy describing tuning details
   using Policy0 = Policy0_;
 
@@ -139,6 +141,10 @@ public:
   using IteratorB1 = IteratorB1_;
   ///< Policy describing tuning details
   using Policy1 = Policy1_;
+
+  ///< Export Policy0 as the threadblock-level Mma's policy
+  using Policy = Policy0;
+  using Shape = Shape0;
   
   using SmemIteratorB1 = SmemIteratorB1_;
 
@@ -188,6 +194,10 @@ public:
   /// Complex transform on B operand
   static ComplexTransform const kTransformB1 = Operator1::kTransformB;
 
+  /// Complex transform exports needed by higher-level kernels
+  static ComplexTransform const kTransformA = kTransformA0;
+  static ComplexTransform const kTransformB = kTransformB0;
+
   /// Internal structure exposed for introspection.
   struct Detail {
 
@@ -199,15 +209,15 @@ public:
                   "GEMM operations.");
 
     /// Number of cp.async instructions to load one stage of operand A
-    static int const TBLDGSTSIterationsA0 =
+    static int const TBLoadIterationsA0 =
         IteratorA0::ThreadMap::Iterations::kCount;
 
     /// Number of cp.async instructions to load one stage of operand B
-    static int const TBLDGSTSIterationsB0 =
+    static int const TBLoadIterationsB0 =
         IteratorB0::ThreadMap::Iterations::kCount;
 
     /// Number of cp.async instructions to load one stage of operand B
-    static int const TBLDGSTSIterationsB1 =
+    static int const TBLoadIterationsB1 =
         IteratorB1::ThreadMap::Iterations::kCount;
 
     /// Number of stages
@@ -215,15 +225,15 @@ public:
 
     /// Number of cp.async instructions to load on group of operand A
     static int const kAccessesPerGroupA0 =
-        (TBLDGSTSIterationsA0 + Base::kWarpGemmIterations0 - 1) / Base::kWarpGemmIterations0;
+        (TBLoadIterationsA0 + Base::kWarpGemmIterations0 - 1) / Base::kWarpGemmIterations0;
 
     /// Number of cp.async instructions to load on group of operand B
     static int const kAccessesPerGroupB0 =
-        (TBLDGSTSIterationsB0 + Base::kWarpGemmIterations0 - 1) / Base::kWarpGemmIterations0;
+        (TBLoadIterationsB0 + Base::kWarpGemmIterations0 - 1) / Base::kWarpGemmIterations0;
 
     /// Number of cp.async instructions to load on group of operand B
     static int const kAccessesPerGroupB1 =
-        (TBLDGSTSIterationsB1 + Base::kWarpGemmIterations1 - 1) / Base::kWarpGemmIterations1;
+        (TBLoadIterationsB1 + Base::kWarpGemmIterations1 - 1) / Base::kWarpGemmIterations1;
   };
 
  private:
@@ -267,7 +277,9 @@ public:
       ///< ID of warp
       int warp_idx,
       ///< ID of each thread within a warp
-      int lane_idx
+      int lane_idx,
+      ///< GEMM0 N is used for accumulator extent
+      int problem_size_0_n
     ):
       Base(shared_storage, thread_idx, warp_idx, lane_idx),
       smem_iterator_A0_(shared_storage.shared_storage0.operand_A_ref(), thread_idx),
@@ -302,10 +314,10 @@ public:
                                    IteratorA0::kAccessesPerVector);
     this->smem_iterator_A0_.set_iteration_index(group_start_A0);
 
-    // LDGSTS for operand A
+    // Load for operand A
     CUTLASS_PRAGMA_UNROLL
     for (int j = 0; j < Detail::kAccessesPerGroupA0; ++j) {
-      if (group_start_A0 + j < Detail::TBLDGSTSIterationsA0) {
+      if (group_start_A0 + j < Detail::TBLoadIterationsA0) {
         typename IteratorA0::AccessType *dst_ptr =
             reinterpret_cast<typename IteratorA0::AccessType *>(
                 this->smem_iterator_A0_.get());
@@ -332,10 +344,10 @@ public:
                                    IteratorB0::kAccessesPerVector);
     this->smem_iterator_B0_.set_iteration_index(group_start_B0);
 
-    // LDGSTS for operand B
+    // Load for operand B
     CUTLASS_PRAGMA_UNROLL
     for (int j = 0; j < Detail::kAccessesPerGroupB0; ++j) {
-      if (group_start_B0 + j < Detail::TBLDGSTSIterationsB0) {
+      if (group_start_B0 + j < Detail::TBLoadIterationsB0) {
         typename IteratorB0::AccessType *dst_ptr =
             reinterpret_cast<typename IteratorB0::AccessType *>(
                 this->smem_iterator_B0_.get());
@@ -365,10 +377,10 @@ public:
                                    IteratorB1::kAccessesPerVector);
     this->smem_iterator_B1_.set_iteration_index(group_start_B1);
 
-    // LDGSTS for operand B
+    // Load for operand B
     CUTLASS_PRAGMA_UNROLL
     for (int j = 0; j < Detail::kAccessesPerGroupB1; ++j) {
-      if (group_start_B1 + j < Detail::TBLDGSTSIterationsB1) {
+      if (group_start_B1 + j < Detail::TBLoadIterationsB1) {
         typename IteratorB1::AccessType *dst_ptr =
             reinterpret_cast<typename IteratorB1::AccessType *>(
                 this->smem_iterator_B1_.get());
@@ -428,9 +440,9 @@ public:
       iterator_A0.set_iteration_index(0);
       this->smem_iterator_A0_.set_iteration_index(0);
 
-      // LDGSTS for operand A
+      // Load for operand A
       CUTLASS_PRAGMA_UNROLL
-      for (int j = 0; j < Detail::TBLDGSTSIterationsA0; ++j) {
+      for (int j = 0; j < Detail::TBLoadIterationsA0; ++j) {
         typename IteratorA0::AccessType *dst_ptr =
             reinterpret_cast<typename IteratorA0::AccessType *>(
                 this->smem_iterator_A0_.get());
@@ -456,9 +468,9 @@ public:
       iterator_B0.set_iteration_index(0);
       this->smem_iterator_B0_.set_iteration_index(0);
 
-      // LDGSTS for operand B
+      // Load for operand B
       CUTLASS_PRAGMA_UNROLL
-      for (int j = 0; j < Detail::TBLDGSTSIterationsB0; ++j) {
+      for (int j = 0; j < Detail::TBLoadIterationsB0; ++j) {
         typename IteratorB0::AccessType *dst_ptr =
             reinterpret_cast<typename IteratorB0::AccessType *>(
                 this->smem_iterator_B0_.get());
@@ -639,6 +651,10 @@ public:
 
     }
 
+    // Commit and drain all pending and predicated cp.async pnz from the GEMM mainloop
+    cutlass::arch::cp_async_fence();
+    cutlass::arch::cp_async_wait<0>();
+    __syncthreads();
 
     // 2nd Gemm
 
@@ -657,12 +673,11 @@ public:
     tb_frag_A1_bias.clear();
     iterator_A1_bias.load(tb_frag_A1_bias);
     ++iterator_A1_bias;
-
-
+ 
     //
     // Prologue
     //
-    int gemm_k_iterations_1 = FragmentIteratorA1::Policy::kIterations / Base::kWarpGemmIterations1;
+    int gemm_k_iterations_1 = (FragmentIteratorA1::Policy::kIterations + Base::kWarpGemmIterations1 - 1) / Base::kWarpGemmIterations1;
 
     // Issue several complete stages
     CUTLASS_PRAGMA_UNROLL
@@ -674,9 +689,9 @@ public:
       iterator_B1.set_iteration_index(0);
       this->smem_iterator_B1_.set_iteration_index(0);
 
-      // LDGSTS for operand B
+      // Load for operand B
       CUTLASS_PRAGMA_UNROLL
-      for (int j = 0; j < Detail::TBLDGSTSIterationsB1; ++j) {
+      for (int j = 0; j < Detail::TBLoadIterationsB1; ++j) {
         typename IteratorB1::AccessType *dst_ptr =
             reinterpret_cast<typename IteratorB1::AccessType *>(
                 this->smem_iterator_B1_.get());
@@ -750,9 +765,9 @@ public:
     // Mainloop
     //
 
+    gemm_k_iterations_1 = (FragmentIteratorA1::Policy::kIterations + Base::kWarpGemmIterations1 - 1) / Base::kWarpGemmIterations1 - (Base::kStages - 1);
     CUTLASS_PRAGMA_UNROLL
-    for (gemm_k_iterations_1 = FragmentIteratorA1::Policy::kIterations / Base::kWarpGemmIterations1 - (Base::kStages - 1); 
-            gemm_k_iterations_1 > (-Base::kStages + 1); gemm_k_iterations_1--) {
+    for (; gemm_k_iterations_1 > (-Base::kStages + 1); gemm_k_iterations_1--) {
       //
       // Loop over GEMM K dimension
       //
@@ -871,7 +886,10 @@ public:
 
     }
 
-
+    // Commit and drain all pending and predicated cp.async pnz from the GEMM mainloop
+    cutlass::arch::cp_async_fence();
+    cutlass::arch::cp_async_wait<0>();
+    __syncthreads();
 
   }
 };

@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -66,6 +66,8 @@
 
 #include "cutlass/epilogue/threadblock/epilogue.h"
 
+#include "cutlass/layout/permute.h"
+
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace cutlass {
@@ -81,7 +83,8 @@ template <
   int PartitionsK,
   typename OutputOp_,
   int ElementsPerAccess,
-  bool ScatterD = false
+  bool ScatterD = false,
+  typename PermuteDLayout = layout::NoPermute
 >
 struct DefaultEpilogueVoltaTensorOp {
 
@@ -111,7 +114,8 @@ struct DefaultEpilogueVoltaTensorOp {
   using OutputTileIterator = cutlass::epilogue::threadblock::PredicatedTileIterator<
     OutputTileThreadMap,
     ElementOutput,
-    ScatterD
+    ScatterD,
+    PermuteDLayout
   >;
 
   using AccumulatorFragmentIterator = cutlass::epilogue::warp::FragmentIteratorVoltaTensorOp<
@@ -326,7 +330,6 @@ struct DefaultEpilogueVoltaTensorOpAffineRankN {
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-
 } // namespace threadblock
 } // namespace epilogue
 } // namespace cutlass

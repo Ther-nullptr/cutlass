@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,7 @@
 #include "cutlass/array.h"
 #include "cutlass/layout/matrix.h"
 #include "cutlass/layout/tensor.h"
+#include "cutlass/layout/permute.h"
 #include "cutlass/matrix_shape.h"
 #include "cutlass/tensor_ref.h"
 #include "cutlass/transform/pitch_linear_thread_map.h"
@@ -70,6 +71,7 @@ template <
   typename ThreadMap_,       ///< Thread map (conept: OutputTileThreadMap)
   typename Element_,         ///< Element data type
   bool ScatterD = false,     ///< Scatter D operand or not
+  typename PermuteDLayout = layout::NoPermute, ///< Permute D operand or not
   bool UseCUDAStore = false
 >
 class PredicatedTileIterator {
@@ -90,6 +92,8 @@ public:
   static int const kElementsPerAccess = ThreadMap::kElementsPerAccess;
   static int const kThreads = ThreadMap::kThreads;
   static int const kIterations = ThreadMap::Count::kTile;
+
+  static bool constexpr PermuteD = !layout::is_trivial_permute<PermuteDLayout>;
 
   static_assert( ThreadMap::Iterations::kRow > 0,"ThreadMap::Iterations::kRow must be > 0");
   static_assert( ThreadMap::Iterations::kGroup > 0,"ThreadMap::Iterations::kGroup must be > 0");
@@ -173,8 +177,11 @@ private:
   /// Parameters structure containing reference and precomputed state.
   PredicatedTileIteratorParams params_;
 
-  /// Byte-level pointer
+  /// Byte-level pointer. This pointer is usually for both load() and store(), unless PermuteD is performed. When having PermuteD, byte_pointer_ is only for load().
   uint8_t *byte_pointer_;
+
+  /// Byte-level pointer for store(). Due to PermuteD Op, store_byte_pointer_ may be with different address computation compared to byte_pointer_.
+  uint8_t *store_byte_pointer_;
 
   /// Array of boolean values to contain steady-state predicates
   Mask mask_;
@@ -196,7 +203,10 @@ private:
 
   /// Scatter indices
   int const *indices_; 
- 
+
+  /// PermuteDLayout
+  PermuteDLayout permute_layout_;
+
   //
   // Static asserts about internal strides
   //
@@ -227,7 +237,8 @@ public:
     TensorCoord threadblock_offset = TensorCoord(),
     int const *indices = nullptr
   ): 
-    params_(params), indices_(indices)
+    params_(params), indices_(indices),
+    permute_layout_(PitchLinearCoord(extent.column(), extent.row()), params_.stride * kElementsPerAccess / sizeof(AccessType))
   {
 
     TensorCoord thread_offset = ThreadMap::initial_offset(thread_idx) + threadblock_offset;
@@ -255,7 +266,7 @@ public:
       mask_.clear();
     }
 
-    // Initialize pointer
+    // Initialize byte_pointer_
     byte_pointer_ = reinterpret_cast<uint8_t *>(pointer) + 
       LongIndex(thread_offset.row()) * LongIndex(params_.stride) + 
       LongIndex(thread_offset.column()) * sizeof(AccessType) / kElementsPerAccess;
@@ -265,6 +276,9 @@ public:
         LongIndex(thread_offset.column()) * sizeof(AccessType) / kElementsPerAccess;
     }
 
+    // store_byte_pointer_ is set to be the same with byte_pointer_ unless PermuteD is used.
+    store_byte_pointer_ = PermuteD ? reinterpret_cast<uint8_t *>(pointer) : byte_pointer_;
+
     // Initialize internal state counter
     state_[0] = state_[1] = state_[2] = 0;
   }
@@ -272,6 +286,7 @@ public:
   /// Adds a pointer offset in units of Element
   CUTLASS_HOST_DEVICE
   void add_pointer_offset(LongIndex pointer_offset) {
+    store_byte_pointer_ += pointer_offset * sizeof_bits<Element>::value / 8;
     byte_pointer_ += pointer_offset * sizeof_bits<Element>::value / 8;
   }
 
@@ -353,7 +368,7 @@ public:
   /// Stores a fragment to memory
   CUTLASS_DEVICE
   void store_with_byte_offset(Fragment const &frag, int64_t byte_offset) const {
-    uint8_t *byte_pointer = byte_pointer_;
+    uint8_t *byte_pointer = store_byte_pointer_;
     AccessType const *frag_ptr = reinterpret_cast<AccessType const *>(&frag);
 
     CUTLASS_PRAGMA_UNROLL
@@ -387,22 +402,38 @@ public:
           for (int column = 0; column < ThreadMap::Iterations::kColumn; ++column) {
 
             bool guard = row_guard && mask_.predicates[column];
+            
+            if (PermuteD) {
+
+              int col_offset = column * ThreadMap::Delta::kColumn;
+
+              int col = col_offset + thread_start_column_;
+              int row = row_offset + thread_start_row_;
+
+              // Locate memory_pointer
+              memory_pointer = reinterpret_cast<AccessType *>(byte_pointer + byte_offset
+                 + permute_layout_(PitchLinearCoord(col, row)) * sizeof(AccessType) / kElementsPerAccess);
+            }
 
             if (UseCUDAStore) {
               if (guard) {
-                memory_pointer[column * ThreadMap::Delta::kColumn / kElementsPerAccess] =
+                memory_pointer[0] =
                     frag_ptr[frag_row_idx * ThreadMap::Iterations::kColumn + column];
               }
             } else {
               cutlass::arch::global_store<AccessType, sizeof(AccessType)>(
                   frag_ptr[frag_row_idx * ThreadMap::Iterations::kColumn + column],
-                  (void *)&memory_pointer[column * ThreadMap::Delta::kColumn / kElementsPerAccess],
+                  (void *)&memory_pointer[0],
                   guard);
+            }
+            
+            if (!PermuteD) {
+              memory_pointer += (ThreadMap::Delta::kColumn / kElementsPerAccess);
             }
           }
 
           if (row + 1 < ThreadMap::Iterations::kRow) {
-            if (!ScatterD) {
+            if (!ScatterD && !PermuteD) {
               byte_pointer += params_.increment_row;
             }
           }
@@ -605,6 +636,10 @@ public:
 
     ++state_[0];
 
+    if (!ScatterD && !PermuteD) {
+      store_byte_pointer_ += params_.advance_row;
+    }
+
     if (!ScatterD) {
       byte_pointer_ += params_.advance_row;
     }
@@ -616,6 +651,7 @@ public:
       state_[0] = 0;
       ++state_[1];
       byte_pointer_ += params_.advance_group;
+      store_byte_pointer_ += params_.advance_group;
 
       thread_start_row_ += (ThreadMap::Shape::kGroup - 1) * 
         ThreadMap::Shape::kRow * ThreadMap::Count::kRow;
@@ -625,6 +661,7 @@ public:
         state_[1] = 0;
         ++state_[2];
         byte_pointer_ += params_.advance_cluster;
+        store_byte_pointer_ += params_.advance_cluster;
 
         thread_start_row_ += ThreadMap::Count::kGroup * 
           ThreadMap::Shape::kGroup * ThreadMap::Count::kRow * ThreadMap::Shape::kRow;
@@ -632,9 +669,67 @@ public:
         if (state_[2] == ThreadMap::Count::kCluster) {
           state_[2] = 0;
           byte_pointer_ += params_.advance_tile;
+          store_byte_pointer_ += params_.advance_tile;
+
+          thread_start_row_ += ThreadMap::Shape::kGroup * ThreadMap::Shape::kRow
+            * ThreadMap::Shape::kCluster * ThreadMap::Shape::kTile;
         }
       }
     }
+
+    return *this;
+  }
+
+  /// Advances a number of positions to load or store
+  CUTLASS_HOST_DEVICE
+  PredicatedTileIterator &operator+=(int increment)
+  {
+    // Row
+    state_[0] += increment;
+    int increment_row = state_[0] / ThreadMap::Count::kRow;
+    state_[0] = state_[0] % ThreadMap::Count::kRow;
+
+    byte_pointer_ += (params_.advance_row * increment);
+    store_byte_pointer_ += (params_.advance_row * increment);
+    thread_start_row_ += (ThreadMap::Shape::kRow * increment);
+
+    // Group
+    state_[1] += increment_row;
+    int increment_group = state_[1] / ThreadMap::Count::kGroup;
+    state_[1] = state_[1] % ThreadMap::Count::kGroup;
+
+    byte_pointer_ += (params_.advance_group * increment_row);
+    store_byte_pointer_ += (params_.advance_group * increment_row);
+    thread_start_row_ +=
+        (ThreadMap::Shape::kGroup - 1) *
+        ThreadMap::Shape::kRow *
+        ThreadMap::Count::kRow *
+        increment_row;
+
+
+    // Cluster
+    state_[2] += increment_group;
+    int increment_cluster = state_[2] / ThreadMap::Count::kCluster;
+    state_[2] = state_[2] % ThreadMap::Count::kCluster;
+
+    byte_pointer_ += (params_.advance_cluster * increment_group);
+    store_byte_pointer_ += (params_.advance_cluster * increment_group);
+    thread_start_row_ +=
+        ThreadMap::Count::kGroup *
+        ThreadMap::Shape::kGroup *
+        ThreadMap::Count::kRow *
+        ThreadMap::Shape::kRow *
+        increment_group;
+
+    // Tile
+    byte_pointer_ += (params_.advance_tile * increment_cluster);
+    store_byte_pointer_ += (params_.advance_tile * increment_cluster);
+    thread_start_row_ +=
+        ThreadMap::Shape::kGroup *
+        ThreadMap::Shape::kRow *
+        ThreadMap::Shape::kCluster *
+        ThreadMap::Shape::kTile *
+        increment_cluster;
 
     return *this;
   }
@@ -892,6 +987,23 @@ public:
         iteration_strided_ = 0;
       }
     }
+
+    return *this;
+  }
+
+  /// Advances a number of positions to load or store
+  CUTLASS_HOST_DEVICE
+  InterleavedPredicatedTileIterator &operator+=(int increment)
+  {
+    // Contiguous
+    iteration_contiguous_ += increment;
+    int increment_strided = iteration_contiguous_ / ThreadMap::Iterations::kContiguous;
+    iteration_contiguous_ = iteration_contiguous_ % ThreadMap::Iterations::kContiguous;
+    byte_pointer_ += (params_.advance_row * increment);
+
+    // Strided
+    iteration_strided_ += increment_strided;
+    byte_pointer_ += (params_.advance_column * increment_strided);
 
     return *this;
   }

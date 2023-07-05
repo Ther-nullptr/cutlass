@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -188,6 +188,7 @@ public:
     IteratorA iterator_A,                             ///< iterator over A operand in global memory
     IteratorB iterator_B,                             ///< iterator over B operand in global memory
     FragmentC const &src_accum,                       ///< source accumulator tile
+    int gemm_k_iterations_per_channel = 0,             ///< number of iterations per channel
     TransformA transform_A = TransformA(),            ///< transformation applied to A fragment
     TransformB transform_B = TransformB()) {          ///< transformation applied to B fragment
 
@@ -237,7 +238,7 @@ public:
     int smem_write_stage_idx = 1;
 
     // Issue loads during the first warp-level matrix multiply-add *AFTER* issuing 
-    // shared memory loads (which have the tighest latency requirement).
+    // shared memory loads (which have the tightest latency requirement).
 
     //
     // Mainloop

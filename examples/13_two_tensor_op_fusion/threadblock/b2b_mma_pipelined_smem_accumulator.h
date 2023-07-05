@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -128,7 +128,9 @@ public:
 
   using Shape0 = Shape0_;             ///< Size of the Gemm problem - concept: gemm::GemmShape<>
   using IteratorA0 = IteratorA0_;     ///< Iterates over tiles of A operand in global memory
+  using IteratorA = IteratorA0;
   using IteratorB0 = IteratorB0_;     ///< Iterates over tiles of B operand in global memory
+  using IteratorB = IteratorB0;
   using IteratorAccumulatorScaleBias = IteratorAccumulatorScaleBias_;   ///< Iterates over tiles of the scale and bias vectors in global memory
   using Policy0 = Policy0_;           ///< Policy0 describing tuning details
 
@@ -141,6 +143,8 @@ public:
   using Shape1 = Shape1_;             ///< Size of the Gemm problem - concept: gemm::GemmShape<>
   using IteratorB1 = IteratorB1_;     ///< Iterates over tiles of B operand in global memory
   using Policy1 = Policy1_;           ///< Policy1 describing tuning details
+  using Policy = Policy1;             ///< Export Policy1 as the threadblock-level Mma's policy
+  using Shape = Shape1;
 
   using SmemIteratorB1 = SmemIteratorB1_;
   using WarpIteratorA1 = WarpIteratorA1_;   ///< Iterates over the intermediate accumulator tile in shared memory
@@ -192,6 +196,10 @@ public:
   /// Complex transform on B1 operand
   static ComplexTransform const kTransformB1 = Operator1::kTransformB;
 
+  /// Complex transform exports needed by higher-level kernels
+  static ComplexTransform const kTransformA = kTransformA0;
+  static ComplexTransform const kTransformB = kTransformB0;
+
   /// staticaly assert kStages for MmaPipelined is two (Double-buffered pipeline)
   static_assert((Base::kStages==2), "MmaPipelined requires kStages set to value 2");
 
@@ -236,13 +244,14 @@ public:
     typename Base::B2bMmaSharedStorage &shared_storage, ///< Shared storage needed for internal use by threadblock-scoped GEMM
     int thread_idx,                                     ///< ID within the threadblock
     int warp_idx,                                       ///< ID of warp
-    int lane_idx                                        ///< ID of each thread within a warp
+    int lane_idx,                                        ///< ID of each thread within a warp
+    int problem_size_0_n                                ///< GEMM0 N is used for accumulator extent
   ):
     Base(shared_storage, thread_idx, warp_idx, lane_idx),
     smem_iterator_A_(shared_storage.b2b_mma_shared_storage.shared_storage0.operand_A_ref(), thread_idx),
     smem_iterator_B0_(shared_storage.b2b_mma_shared_storage.shared_storage0.operand_B_ref(), thread_idx),
     smem_iterator_D0_(shared_storage.accumulator_shared_storage0.accum_ref(), lane_idx),
-    warp_tile_iterator_A1_(shared_storage.accumulator_shared_storage0.accum_ref(), lane_idx),
+    warp_tile_iterator_A1_(shared_storage.accumulator_shared_storage0.accum_ref(), {Base::WarpGemm1::kM, problem_size_0_n}, lane_idx),
     smem_iterator_B1_(shared_storage.b2b_mma_shared_storage.shared_storage1.operand_B_ref(), thread_idx) {
 
     // Compute warp location within threadblock tile by mapping the warp_id to
@@ -345,7 +354,7 @@ public:
     iterator_B0.clear_mask(gemm_k_iterations_0 <= 1);
 
     // Issue loads during the first warp-level matrix multiply-add *AFTER* issuing 
-    // shared memory loads (which have the tighest latency requirement).
+    // shared memory loads (which have the tightest latency requirement).
 
     //
     // Mainloop

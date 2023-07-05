@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -90,7 +90,7 @@ namespace device {
     // Instantiate the CUTLASS TRMM operator.
     //
 
-    cutlass::gemm::device::trmm<
+    cutlass::gemm::device::Trmm<
       float,
       cutlass::layout::ColumnMajor,
       cutlass::SideMode::kLeft,
@@ -110,7 +110,7 @@ namespace device {
       cutlass::gemm::GemmUniversalMode,   // Trmm Problem Mode
       {m, n, m/n},                        // GemmCoord problem_size (k is based on left- or right-side mode)
       batch_count,
-      {alpha}                            // EpilogueOutputOp::Params epilogue_op_params
+      {alpha},                            // EpilogueOutputOp::Params epilogue_op_params
       void const * ptr_A,
       void const * ptr_B,
       void const * ptr_C,
@@ -563,7 +563,7 @@ For the mainloop and trmm kernel, `A` and `B` points to left-side and right-side
    call GEMM mainloop for with RowMajor efficient-epilogue
 ********************************************************************************************************/
 
-/// Parital specialization for column-major output exchanges problem size and operand.
+/// Partial specialization for column-major output exchanges problem size and operand.
 template <
     /// Element type for A matrix operand
     typename ElementA_,

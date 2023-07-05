@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -205,8 +205,8 @@ public:
       (K == conv.K) && (T == conv.T) && (R == conv.R) && (S == conv.S) &&
       (Z == conv.Z) &&(P == conv.P) && (Q == conv.Q) &&
       (pad_d == conv.pad_d) && (pad_h == conv.pad_h) && (pad_w == conv.pad_w) &&
-      (stride_d == conv.stride_d) && (stride_h == conv.stride_h) && (stride_w == conv.stride_h) &&
-      (dilation_d == conv.dilation_d) && (dilation_h == conv.dilation_h) && (dilation_h == conv.dilation_h)
+      (stride_d == conv.stride_d) && (stride_h == conv.stride_h) && (stride_w == conv.stride_w) &&
+      (dilation_d == conv.dilation_d) && (dilation_h == conv.dilation_h) && (dilation_w == conv.dilation_w)
     );  
   }
 
@@ -339,29 +339,46 @@ int implicit_gemm_k_iterations(
   Operator conv_operator, 
   int threadblock_K, 
   Conv3dProblemSize const &problem_size,
-  IteratorAlgorithm algorithm = IteratorAlgorithm::kAnalytic) {
+  IteratorAlgorithm algorithm = IteratorAlgorithm::kAnalytic,
+  GroupMode group_mode = GroupMode::kNone,
+  int threadblock_N = 0) {
 
   int iterations = 0;
   int elements_per_split_k_slice = 0;
+  if (group_mode == GroupMode::kNone) {
+    switch (conv_operator) {
+      case Operator::kFprop:
+        elements_per_split_k_slice = (problem_size.C + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
+        iterations = problem_size.T * problem_size.R * problem_size.S * ((elements_per_split_k_slice + threadblock_K - 1) / threadblock_K);
+        break;
+    
+      case Operator::kDgrad:
+        elements_per_split_k_slice =  (problem_size.K + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
+        iterations = problem_size.T * problem_size.R * problem_size.S * ((elements_per_split_k_slice + threadblock_K - 1) / threadblock_K);
+        break;
+    
+      case Operator::kWgrad:
+        elements_per_split_k_slice = (problem_size.N * problem_size.Z * problem_size.P * problem_size.Q + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
+        iterations = (elements_per_split_k_slice + threadblock_K - 1) / threadblock_K;
+        break;
+    
+      default:
+        break;
+    }
+  } else if (group_mode == GroupMode::kDepthwise) {
+    int channels_per_cta = threadblock_N;
 
-  switch (conv_operator) {
-    case Operator::kFprop:
-      elements_per_split_k_slice = (problem_size.C + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
-      iterations = problem_size.T * problem_size.R * problem_size.S * ((elements_per_split_k_slice + threadblock_K - 1) / threadblock_K);
-      break;
-  
-    case Operator::kDgrad:
-      elements_per_split_k_slice =  (problem_size.K + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
-      iterations = problem_size.T * problem_size.R * problem_size.S * ((elements_per_split_k_slice + threadblock_K - 1) / threadblock_K);
-      break;
-  
-    case Operator::kWgrad:
-      elements_per_split_k_slice = (problem_size.N * problem_size.Z * problem_size.P * problem_size.Q + problem_size.split_k_slices - 1) / problem_size.split_k_slices;
-      iterations = (elements_per_split_k_slice + threadblock_K - 1) / threadblock_K;
-      break;
-  
-    default:
-      break;
+    if (algorithm == IteratorAlgorithm::kAnalytic) {
+      switch (conv_operator) {
+        case Operator::kFprop:
+          iterations = problem_size.T * problem_size.R * problem_size.S *
+                       ((channels_per_cta + threadblock_K - 1) / threadblock_K);
+          break;
+
+        default:
+          break;
+      }
+    }
   }
 
   return iterations;

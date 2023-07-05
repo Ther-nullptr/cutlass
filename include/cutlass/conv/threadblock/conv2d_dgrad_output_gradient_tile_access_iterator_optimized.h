@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -230,7 +230,7 @@ public:
       offset_p[s] = (mapped_h + problem_size_.pad_h - filter_r) / problem_size_.stride_h;
       offset_q[s] = (mapped_w + problem_size_.pad_w - filter_s) / problem_size_.stride_w;
 
-      // Intialize pointers for gemm_k=0
+      // Initialize pointers for gemm_k=0
       TensorCoord coord{offset_n[s], offset_p[s], offset_q[s], filter_k_};
 
       pointer_[s] += params_.layout(coord) * sizeof_bits<Element>::value / 8;
@@ -321,7 +321,7 @@ public:
     add_byte_offset_(pointer_offset * sizeof_bits<Element>::value / 8);
   }
 
-  CUTLASS_HOST_DEVICE
+  CUTLASS_DEVICE
   void advance() {
 
     int next_idx = 0;
@@ -336,23 +336,37 @@ public:
 
       // Move filter_r by stride_h
       filter_r_ += problem_size_.stride_h;
+#if 0
       if (filter_r_ < problem_size_.R) {
-        
+
         next_idx = 1;
 
-        // Restore bytes in q coordinate (Mma in filter s dimenstion)
+        // Restore bytes in q coordinate (Mma in filter s dimension)
         reset_bytes = reset_bytes_s_;
 
       } else {
 
         // Restore filter_r
         filter_r_ = start_r_;
-        
+
         next_idx = 2;
-        
-        // Restore bytes in p and q coordinate (Mma in filter s and r dimenstion)
+
+        // Restore bytes in p and q coordinate (Mma in filter s and r dimension)
         reset_bytes = reset_bytes_r_;
       }
+#else
+      asm volatile(
+          "{\n\t"
+          " .reg .pred %%p;\n\t"
+          " setp.lt.s32 %%p, %3, %4;\n\t"
+          " selp.s32 %0, %3, %5, %%p;\n\t"
+          " selp.s32 %1, 1, 2, %%p;\n\t"
+          " selp.s64 %2, %6, %7, %%p;\n\t"
+          "}\n"
+          : "=r"(filter_r_), "=r"(next_idx), "=l"(reset_bytes)
+          : "r"(filter_r_), "r"(problem_size_.R), "r"(start_r_),
+            "l"(reset_bytes_s_), "l"(reset_bytes_r_));
+#endif
     }
 
     // offset pointers by offset_bytes
@@ -619,7 +633,7 @@ public:
 
     CUTLASS_PRAGMA_UNROLL
     for (int v_idx = 0; v_idx < kAccessesPerVector; ++v_idx) {
-      clear_mask(v_idx, filter_k_ >= problem_size.K);
+      clear_mask(v_idx, filter_k_ + v_idx * AccessType::kElements >= problem_size.K);
     }
 
     set_iteration_index(0);

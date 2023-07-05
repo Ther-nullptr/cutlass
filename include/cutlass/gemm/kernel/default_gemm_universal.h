@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,8 +49,11 @@
 #include "cutlass/numeric_types.h"
 
 #include "cutlass/gemm/kernel/gemm_universal.h"
+#include "cutlass/gemm/kernel/gemm_universal_streamk.h"
 #include "cutlass/gemm/kernel/default_gemm.h"
 #include "cutlass/gemm/kernel/default_gemm_complex.h"
+
+#include "cutlass/layout/permute.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -109,6 +112,12 @@ template <
     bool GatherB = false,
     /// Scatter result D by using an index array
     bool ScatterD = false,
+    /// Permute result D
+    typename PermuteDLayout = layout::NoPermute,
+    /// Permute operand A
+    typename PermuteALayout_ = layout::NoPermute,
+    /// Permute operand B
+    typename PermuteBLayout_ = layout::NoPermute,
     ///
     typename Enable = void
     >
@@ -163,7 +172,13 @@ template <
     /// Gather operand B by using an index array
     bool GatherB,
     /// Scatter result D by using an index array
-    bool ScatterD
+    bool ScatterD,
+    /// Permute result D
+    typename PermuteDLayout,
+    /// Permute operand A
+    typename PermuteALayout,
+    /// Permute operand B
+    typename PermuteBLayout
 >
 struct DefaultGemmUniversal<
   ElementA,
@@ -190,6 +205,9 @@ struct DefaultGemmUniversal<
   GatherA,
   GatherB,
   ScatterD,
+  PermuteDLayout,
+  PermuteALayout,
+  PermuteBLayout,
   typename platform::enable_if< ! cutlass::is_complex<ElementAccumulator>::value>::type
 > {
 
@@ -216,15 +234,32 @@ struct DefaultGemmUniversal<
     SharedMemoryClear,
     GatherA,
     GatherB,
-    ScatterD
+    ScatterD,
+    PermuteDLayout,
+    PermuteALayout,
+    PermuteBLayout
   >::GemmKernel;
 
-    /// Define the kernel in terms of the default kernel
-  using GemmKernel = kernel::GemmUniversal<
-    typename DefaultGemmKernel::Mma,
-    typename DefaultGemmKernel::Epilogue,
-    ThreadblockSwizzle
-  >;
+  /// Universal kernel without StreamkFeature member type
+  template <class SwizzleT, class Enable = void>
+  class SelectBase :
+    public kernel::GemmUniversal<
+      typename DefaultGemmKernel::Mma,
+      typename DefaultGemmKernel::Epilogue,
+      SwizzleT>
+  {};
+
+  /// Universal kernel with StreamkFeature member type
+  template <class SwizzleT>
+  class SelectBase<SwizzleT, typename SwizzleT::StreamkFeature> :
+    public kernel::GemmUniversalStreamk<
+      typename DefaultGemmKernel::Mma,
+      typename DefaultGemmKernel::Epilogue,
+      SwizzleT>
+  {};
+
+  /// Select kernel by ThreadblockSwizzle's support for StreamkFeature
+  using GemmKernel = SelectBase<ThreadblockSwizzle>;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -302,6 +337,9 @@ struct DefaultGemmUniversal<
   false,
   false,
   false,
+  layout::NoPermute,
+  layout::NoPermute,
+  layout::NoPermute,
   typename platform::enable_if<cutlass::is_complex<ElementAccumulator>::value>::type
 > {
 
@@ -327,12 +365,26 @@ struct DefaultGemmUniversal<
     false
   >::GemmKernel;
 
-  /// Define the kernel in terms of the default kernel
-  using GemmKernel = kernel::GemmUniversal<
-    typename DefaultGemmKernel::Mma,
-    typename DefaultGemmKernel::Epilogue, 
-    ThreadblockSwizzle
-  >;
+  /// Universal kernel without StreamkFeature member type
+  template <class SwizzleT, class Enable = void>
+  class SelectBase :
+    public kernel::GemmUniversal<
+      typename DefaultGemmKernel::Mma,
+      typename DefaultGemmKernel::Epilogue,
+      SwizzleT>
+  {};
+
+  /// Universal kernel with StreamkFeature member type
+  template <class SwizzleT>
+  class SelectBase<SwizzleT, typename SwizzleT::StreamkFeature> :
+    public kernel::GemmUniversalStreamk<
+      typename DefaultGemmKernel::Mma,
+      typename DefaultGemmKernel::Epilogue,
+      SwizzleT>
+  {};
+
+  /// Select kernel by ThreadblockSwizzle's support for StreamkFeature
+  using GemmKernel = SelectBase<ThreadblockSwizzle>;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

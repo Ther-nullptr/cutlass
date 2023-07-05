@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -528,7 +528,6 @@ public:
     int k = filter_k_ + iteration_vector_ * AccessType::kElements;
 
     return TensorCoord(n, p, q, k);
-
   }
 
   /// Returns true if the current coordinate is within the output tensor Dy
