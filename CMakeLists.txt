@@ -86,7 +86,7 @@ set(CUTLASS_TEST_LEVEL "0" CACHE STRING "Level of tests to compile.")
 # 0 - Sanity, 1 - Release-Quality, 2 - Exhaustive
 
 ################################################################################
-set(CUTLASS_ENABLE_HEADERS_ONLY OFF CACHE BOOL "Enable only the header library")
+set(CUTLASS_ENABLE_HEADERS_ONLY OFF CACHE BOOL "Enable only header library")
 
 if(CUTLASS_ENABLE_HEADERS_ONLY)
   set(CUTLASS_ENABLE_EXAMPLES_INIT OFF)

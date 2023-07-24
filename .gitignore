@@ -2,3 +2,9 @@
 __pycache__/
 build/
 CMakeFiles/
+
+python/cutlass.egg-info/
+*.so
+build/
+
+CMakeCache.txt

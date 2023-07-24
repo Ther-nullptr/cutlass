@@ -33,7 +33,7 @@
 */
 
 #pragma once
-
+#include <cstdio>
 
 #include "cutlass/aligned_buffer.h"
 #include "cutlass/arch/memory.h"
@@ -503,7 +503,6 @@ public:
     // Unroll the warp-level MMA tiles of a threadblock's mainloop iteration
     CUTLASS_PRAGMA_UNROLL
     for (int warp_mma_k = 0; warp_mma_k < Base::kWarpGemmIterations; ++warp_mma_k) {
-
       // Load the next warp-tile's A fragment from shared memory
       this->warp_tile_iterator_A_.set_kgroup_index((warp_mma_k + 1) % Base::kWarpGemmIterations);
       this->warp_tile_iterator_A_.load(pipe_state.warp_loaded_frag_A_[(warp_mma_k + 1) % 2]);
@@ -580,7 +579,7 @@ public:
         cutlass::arch::cp_async_fence();
 
         // Wait until we have at least one completed global fetch stage
-        gmem_wait();
+        gmem_wait(); // end of load stage
 
         // Move to the next global fetch stage
         advance_smem_write_stage(iterator_A, iterator_B);
@@ -663,7 +662,7 @@ public:
     // Commit and drain all pending and predicated cp.async pnz from the GEMM mainloop
     cutlass::arch::cp_async_fence();
     cutlass::arch::cp_async_wait<0>();
-    __syncthreads();
+    __syncthreads(); // end of calculation stage
 
   }
 
