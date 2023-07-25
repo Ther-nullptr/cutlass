@@ -47,6 +47,8 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
+#define OUTPUT_CLOCK
+
 namespace cutlass {
 namespace gemm {
 namespace threadblock {
@@ -161,7 +163,9 @@ public:
   };
 
  private:
-
+   uint32_t startClk;
+   uint32_t timeClk;
+   uint32_t record_iter = 0;
 
   // Structure encapsulating pipeline state live from one iteration to the next
   struct PipeState {
@@ -287,6 +291,7 @@ public:
   CUTLASS_DEVICE
   void copy_tiles_and_advance(IteratorA &iterator_A, IteratorB &iterator_B,
                               int group_start_A = 0, int group_start_B = 0) {
+    // begin of copy stage
     iterator_A.set_iteration_index(group_start_A *
                                    IteratorA::kAccessesPerVector);
     this->smem_iterator_A_.set_iteration_index(group_start_A);
@@ -368,6 +373,7 @@ public:
     // Issue several complete stages
     CUTLASS_PRAGMA_UNROLL
     for (int stage = 0; stage < Base::kStages - 1; ++stage, --gemm_k_iterations) {
+      // asm volatile("mov.u32 %0, %%clock;" : "=r"(loadstartClk[stage]));
 
       // Disable global fetching if done with global fetch iterations
       iterator_A.clear_mask(gemm_k_iterations == 0);
@@ -501,8 +507,18 @@ public:
     int &gemm_k_iterations)         ///< [in|out] number of threadblock mainloop iterations remaining
   {
     // Unroll the warp-level MMA tiles of a threadblock's mainloop iteration
+    // begin of calculate stage
     CUTLASS_PRAGMA_UNROLL
     for (int warp_mma_k = 0; warp_mma_k < Base::kWarpGemmIterations; ++warp_mma_k) {
+      
+      // let only the one thread in the warp to do the clocking
+      // if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
+      //   if (warp_mma_k == 0) {
+      //   asm volatile("mov.u32 %0, %%clock;" : "=r"(computeStartClk));
+      //   //asm volatile("mov.u32 %0, %%clock;" : "=r"(loadstartClk[smem_write_stage_idx_]));
+      //  }
+      // }
+
       // Load the next warp-tile's A fragment from shared memory
       this->warp_tile_iterator_A_.set_kgroup_index((warp_mma_k + 1) % Base::kWarpGemmIterations);
       this->warp_tile_iterator_A_.load(pipe_state.warp_loaded_frag_A_[(warp_mma_k + 1) % 2]);
@@ -580,7 +596,12 @@ public:
 
         // Wait until we have at least one completed global fetch stage
         gmem_wait(); // end of load stage
-
+#ifdef OUTPUT_CLOCK
+        if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0 && record_iter == 1) {
+          asm volatile("mov.u32 %0, %%clock;" : "=r"(timeClk));
+          //printf("load stage %d: %d\n", (smem_write_stage_idx_ + Stages - 1) % Stages, loadstopClk[(smem_write_stage_idx_ + Stages - 1) % Stages] - loadstartClk[(smem_write_stage_idx_ + Stages - 1) % Stages]);
+        }
+#endif
         // Move to the next global fetch stage
         advance_smem_write_stage(iterator_A, iterator_B);
         advance_smem_read_stage();
@@ -652,6 +673,9 @@ public:
         iterator_A,
         iterator_B,
         gemm_k_iterations);
+#ifdef OUTPUT_CLOCK
+      record_iter++;
+#endif
     }
 
     if (Detail::kStagedAccumulation) {
@@ -663,6 +687,10 @@ public:
     cutlass::arch::cp_async_fence();
     cutlass::arch::cp_async_wait<0>();
     __syncthreads(); // end of calculation stage
+    // if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
+    // asm volatile("mov.u32 %0, %%clock;" : "=r"(computeStopClk));
+    // // printf("compute stage: %d\n", computeStopClk - computeStartClk);
+    // }
 
   }
 
@@ -701,6 +729,9 @@ public:
     smem_read_stage_idx_ = smem_write_stage_idx_;
   }
 
+  // output the recorded clock cycles
+  
+
 
   /// Perform a threadblock-scoped matrix multiply-accumulate
   CUTLASS_DEVICE
@@ -722,11 +753,23 @@ public:
     // Wait until we have at least one completed global fetch stage
     gmem_wait();
 
+#ifdef OUTPUT_CLOCK
+      if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0 ) {
+        asm volatile("mov.u32 %0, %%clock;" : "=r"(startClk)::"memory");
+      }
+#endif
+
     // Initialize destination accumulators with source accumulators
     accum = src_accum;
 
     // Perform the MAC-iterations
     gemm_iters(gemm_k_iterations, accum, iterator_A, iterator_B);
+#ifdef OUTPUT_CLOCK
+    // print the clock cycles
+    if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
+      printf("diff: %u\n", timeClk - startClk);
+    }
+#endif
   }
 };
 

@@ -134,7 +134,7 @@ using OperatorClass       = cutlass::arch::OpClassTensorOp;           // Operato
 using ThreadblockShape    = cutlass::gemm::GemmShape<128, 128, 32>;   // Threadblock-level tile size (concept: GemmShape)
 using WarpShape           = cutlass::gemm::GemmShape<64, 64, 32>;     // Warp-level tile size (concept: GemmShape)
 using InstructionShape    = cutlass::gemm::GemmShape<16, 8, 16>;      // Instruction-level tile size (concept: GemmShape)
-constexpr int NumStages   = 3;                                        // Number of global->shared pipeline stages used in the GEMM mainloop
+constexpr int NumStages   = 5;                                        // Number of global->shared pipeline stages used in the GEMM mainloop
 
 // Epilogue output operator
 using EpilogueOp = cutlass::epilogue::thread::LinearCombination<
@@ -235,7 +235,7 @@ struct Options
   Options(std::string command_name) :
     command_name(command_name),
     help(false),
-    problem_size({2048, 2048, 2048}),
+    problem_size({4096, 4096, 4096}),
     alpha(1.0f),
     beta(0.0f),
     split_k_factor(1),
@@ -532,7 +532,7 @@ int main(int argc, const char **argv)
   cutlass::reference::host::TensorFill(options.tensor_ref_d.host_view());
   options.tensor_ref_d.sync_device();
 
-  // Create instantiation for device reference gemm kernel
+  // // Create instantiation for device reference gemm kernel
   // DeviceGemmReference gemm_reference;
 
   // // Launch device reference gemm kernel
