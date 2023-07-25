@@ -166,6 +166,7 @@ public:
    uint32_t startClk;
    uint32_t timeClk;
    uint32_t record_iter = 0;
+   constexpr int target_iter = 1;
 
   // Structure encapsulating pipeline state live from one iteration to the next
   struct PipeState {
@@ -597,7 +598,7 @@ public:
         // Wait until we have at least one completed global fetch stage
         gmem_wait(); // end of load stage
 #ifdef OUTPUT_CLOCK
-        if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0 && record_iter == 1) {
+        if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0 && record_iter == target_iter) {
           asm volatile("mov.u32 %0, %%clock;" : "=r"(timeClk));
           //printf("load stage %d: %d\n", (smem_write_stage_idx_ + Stages - 1) % Stages, loadstopClk[(smem_write_stage_idx_ + Stages - 1) % Stages] - loadstartClk[(smem_write_stage_idx_ + Stages - 1) % Stages]);
         }
