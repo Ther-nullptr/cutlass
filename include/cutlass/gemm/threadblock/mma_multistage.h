@@ -47,12 +47,12 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define OUTPUT_CLOCK
+// #define OUTPUT_CLOCK
 
 namespace cutlass {
 namespace gemm {
 namespace threadblock {
-
+constexpr int target_iter = 10;
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Structure to compute the matrix product targeting CUDA cores and SIMT math
@@ -166,7 +166,6 @@ public:
    uint32_t startClk;
    uint32_t timeClk;
    uint32_t record_iter = 0;
-   constexpr int target_iter = 1;
 
   // Structure encapsulating pipeline state live from one iteration to the next
   struct PipeState {

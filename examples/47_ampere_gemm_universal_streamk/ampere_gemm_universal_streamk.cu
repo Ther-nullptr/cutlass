@@ -134,7 +134,7 @@ using OperatorClass       = cutlass::arch::OpClassTensorOp;           // Operato
 using ThreadblockShape    = cutlass::gemm::GemmShape<128, 128, 32>;   // Threadblock-level tile size (concept: GemmShape)
 using WarpShape           = cutlass::gemm::GemmShape<64, 64, 32>;     // Warp-level tile size (concept: GemmShape)
 using InstructionShape    = cutlass::gemm::GemmShape<16, 8, 16>;      // Instruction-level tile size (concept: GemmShape)
-constexpr int NumStages   = 5;                                        // Number of global->shared pipeline stages used in the GEMM mainloop
+constexpr int NumStages   = 6;                                        // Number of global->shared pipeline stages used in the GEMM mainloop
 
 // Epilogue output operator
 using EpilogueOp = cutlass::epilogue::thread::LinearCombination<
