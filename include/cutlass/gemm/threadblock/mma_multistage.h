@@ -47,12 +47,12 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-// #define OUTPUT_CLOCK
+#define OUTPUT_CLOCK
 
 namespace cutlass {
 namespace gemm {
 namespace threadblock {
-constexpr int target_iter = 0;
+constexpr int target_iter = 2;
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Structure to compute the matrix product targeting CUDA cores and SIMT math
@@ -749,11 +749,11 @@ public:
       IteratorB iterator_B,
       ///< initial value of accumulator
       FragmentC const &src_accum) {
-#ifdef OUTPUT_CLOCK
-      if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0 ) {
-        asm volatile("mov.u32 %0, %%clock;" : "=r"(startClk0)::"memory");
-      }
-#endif
+// #ifdef OUTPUT_CLOCK
+//       if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0 ) {
+//         asm volatile("mov.u32 %0, %%clock;" : "=r"(startClk0)::"memory");
+//       }
+// #endif
 
     // Prologue (start fetching iterations of global fragments into shared memory)
     prologue(iterator_A, iterator_B, gemm_k_iterations);
@@ -775,7 +775,7 @@ public:
 #ifdef OUTPUT_CLOCK
     // print the clock cycles
     if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
-      printf("diff: %u\n", startClk - startClk0);
+      printf("diff: %u\n", timeClk - startClk);
     }
 #endif
   }

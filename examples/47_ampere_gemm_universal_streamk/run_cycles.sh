@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Define the range of values for 'target_iter' and 'num_stage'
-target_iter_values=(0)
-# for i in {0..20}; do
-#   target_iter_values+=("$i")
-# done
+target_iter_values=()
+for i in {0..20}; do
+  target_iter_values+=("$i")
+done
 num_stage_values=(3 4 5 6)
 
 mma_file_locate="/home/yujin/workspace/cutlass/include/cutlass/gemm/threadblock/mma_multistage.h"

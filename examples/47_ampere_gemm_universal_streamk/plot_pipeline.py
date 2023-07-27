@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 FIXED_WIDTH = 0.5
-SCALE = 1000
+SCALE = 2000
 ticks = []
 
 def draw_adjustable_rectangle(ax: plt.Axes, start_locate: float, end_locate: float, width_locate: float, x_limit: float = 30, y_limit: float = 10):
@@ -21,41 +21,41 @@ def grid_and_save(ax: plt.Axes, pic_name: str):
     ax.grid(which='major', axis='x', linestyle='--')
     ax.invert_yaxis()
     ax.set_xticks(ticks)
-    ax.set_xlabel('clocks/(1000 cycles)')
+    ax.set_xlabel(f'clocks/({SCALE} cycles)')
     ax.set_ylabel('stage')
     ax.set_title(pic_name)
     plt.savefig(pic_name + '.png')
 
 
 if __name__ == '__main__':
-    stage = 6
-    shape = (2048, 128, 8192)
+    stage = 3
+    shape = (4096, 4096, 4096)
     fig, ax = plt.subplots()
     fig.set_size_inches(20, 16)
     pic_name = f'stage_{stage}_shape_{shape[0]}_{shape[1]}_{shape[2]}'
-    start_time = 1655.18
+    start_time = 1757.09
     sync_time = [
-        365.364,
-        671,
-        1035.55,
-        1680.82,
-        1907.73,
-        2291.45,
-        2508.73,
-        3136.64,
-        3363.18,
-        3780.09,
-        4044.91,
-        4570.91,
-        4712,
-        5300.55,
-        5382.64,
-        5813.09,
-        6089.55,
-        6742.09,
-        7007.27,
-        7493,
-        7840.18,
+        642.455,
+        3754.64,
+        4538.73,
+        6508.09,
+        6893,
+        8259,
+        9173.55,
+        11457.5,
+        12131.2,
+        14197.7,
+        15398,
+        17281.9,
+        18409.2,
+        20225.2,
+        20657.1,
+        22485.2,
+        23245.5,
+        25068.9,
+        25743.1,
+        27901,
+        28395.5,
     ]
     # scale the time
     start_time /= SCALE

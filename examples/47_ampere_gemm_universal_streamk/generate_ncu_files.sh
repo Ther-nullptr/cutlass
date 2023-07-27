@@ -26,6 +26,7 @@ for num_stage in "${num_stage_values[@]}"; do
         sed -i "s/constexpr int NumStages   = [0-9]\+;/constexpr int NumStages   = $num_stage;/" $test_file_locate
         # Compile the modified files
         make $binary_name > /dev/null
-        cuobjdump -sass ./${binary_name} > stage_clock_stage_${num_stage}_target_iter_${target_iter}.sass
+        # cuobjdump -sass ./${binary_name} > stage_clock_stage_${num_stage}_target_iter_${target_iter}.sass
+        $NCU --profile-from-start=ON --target-processes all --section SpeedOfLight --section LaunchStats --section SpeedOfLight_HierarchicalTensorRooflineChart --section Occupancy --section MemoryWorkloadAnalysis_Chart --section MemoryWorkloadAnalysis_Tables --section ComputeWorkloadAnalysis --section InstructionStats --section WarpStateStats -o ncu-rep/roofline-target_iter-$target_iter-num_stage-$num_stage -f ./${binary_name} --m=4096 --n=4096 --k=4096 --split=1 --iterations=1
     done
 done
