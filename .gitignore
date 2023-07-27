@@ -8,3 +8,4 @@ python/cutlass.egg-info/
 build/
 
 CMakeCache.txt
+*.png
