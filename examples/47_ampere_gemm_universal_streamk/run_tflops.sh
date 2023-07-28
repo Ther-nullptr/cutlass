@@ -2,7 +2,7 @@
 
 #! notice to delete the macro of clock
 # Define the range of values for 'target_iter' and 'num_stage'
-num_stage_values=(4 5 6)
+num_stage_values=(3)
 
 mma_file_locate="/home/yujin/workspace/cutlass/include/cutlass/gemm/threadblock/mma_multistage.h"
 test_file_locate="/home/yujin/workspace/cutlass/examples/47_ampere_gemm_universal_streamk/ampere_gemm_universal_streamk.cu"
@@ -10,8 +10,8 @@ test_file_locate="/home/yujin/workspace/cutlass/examples/47_ampere_gemm_universa
 binary_name="47_ampere_gemm_universal_streamk"
 binary_dir="/home/yujin/workspace/cutlass/build/examples/47_ampere_gemm_universal_streamk"
 
-M=2752
-N=2048
+M=2048
+N=128
 K=8192
 SPLIT_K=1
 

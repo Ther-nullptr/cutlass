@@ -47,7 +47,7 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define OUTPUT_CLOCK
+// #define OUTPUT_CLOCK
 
 namespace cutlass {
 namespace gemm {
@@ -601,7 +601,7 @@ public:
         gmem_wait(); // end of load stage
 #ifdef OUTPUT_CLOCK
         if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0 && record_iter == target_iter) {
-          asm volatile("mov.u32 %0, %%clock;" : "=r"(timeClk));
+          asm volatile("mov.u32 %0, %%clock;" : "=r"(timeClk)::"memory");
           //printf("load stage %d: %d\n", (smem_write_stage_idx_ + Stages - 1) % Stages, loadstopClk[(smem_write_stage_idx_ + Stages - 1) % Stages] - loadstartClk[(smem_write_stage_idx_ + Stages - 1) % Stages]);
         }
 #endif

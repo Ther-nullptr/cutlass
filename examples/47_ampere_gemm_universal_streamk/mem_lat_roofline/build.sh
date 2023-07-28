@@ -1,0 +1,1 @@
+nvcc --resource-usage -O0 -std=c++17 -Xptxas -dlcm=cv -Xptxas -dscm=wt  -gencode=arch=compute_80,code=\"sm_80,compute_80\"  mem_lat_roofline.cu -o mem_lat_roofline -L -lcudar

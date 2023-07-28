@@ -12,6 +12,8 @@ def draw_adjustable_rectangle(ax: plt.Axes, start_locate: float, end_locate: flo
     # Draw the rectangle
     rectangle = patches.Rectangle((start_locate, width_locate), height,
                                   FIXED_WIDTH, linewidth=1, edgecolor='r', facecolor='none')
+    # plot a num in the middle of the rectangle
+    ax.text(start_locate + height / 2, width_locate + FIXED_WIDTH / 2, f'{height * SCALE:.2f}', ha='center', va='center')
     ax.add_patch(rectangle)
     ax.axis('scaled')
     ticks.append(end_locate)
@@ -28,34 +30,26 @@ def grid_and_save(ax: plt.Axes, pic_name: str):
 
 
 if __name__ == '__main__':
-    stage = 3
+    stage = 6
     shape = (4096, 4096, 4096)
+    thread_block = (128, 128, 32)
+    warp_num = 4
     fig, ax = plt.subplots()
     fig.set_size_inches(20, 16)
-    pic_name = f'stage_{stage}_shape_{shape[0]}_{shape[1]}_{shape[2]}'
-    start_time = 1757.09
+    pic_name = f'stage_{stage}_shape_{shape[0]}_{shape[1]}_{shape[2]}_thread_block_{thread_block[0]}_{thread_block[1]}_{thread_block[2]}_warp_num_{warp_num}'
+    start_time = 2127.95
     sync_time = [
-        642.455,
-        3754.64,
-        4538.73,
-        6508.09,
-        6893,
-        8259,
-        9173.55,
-        11457.5,
-        12131.2,
-        14197.7,
-        15398,
-        17281.9,
-        18409.2,
-        20225.2,
-        20657.1,
-        22485.2,
-        23245.5,
-        25068.9,
-        25743.1,
-        27901,
-        28395.5,
+        995.727,
+        1660.27,
+        2192.73,
+        2972.09,
+        3418.55,
+        4024.55,
+        4560.09,
+        5190.09,
+        5608.73,
+        6294.27,
+        6743.27,
     ]
     # scale the time
     start_time /= SCALE
