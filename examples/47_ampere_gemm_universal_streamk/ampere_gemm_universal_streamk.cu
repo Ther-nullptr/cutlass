@@ -134,7 +134,7 @@ using OperatorClass       = cutlass::arch::OpClassTensorOp;           // Operato
 using ThreadblockShape    = cutlass::gemm::GemmShape<64, 64, 32>;   // Threadblock-level tile size (concept: GemmShape)
 using WarpShape           = cutlass::gemm::GemmShape<32, 32, 32>;     // Warp-level tile size (concept: GemmShape)
 using InstructionShape    = cutlass::gemm::GemmShape<16, 8, 16>;      // Instruction-level tile size (concept: GemmShape)
-constexpr int NumStages   = 6;                                        // Number of global->shared pipeline stages used in the GEMM mainloop
+constexpr int NumStages   = 10;                                        // Number of global->shared pipeline stages used in the GEMM mainloop
 
 // Epilogue output operator
 using EpilogueOp = cutlass::epilogue::thread::LinearCombination<
@@ -533,17 +533,17 @@ int main(int argc, const char **argv)
   options.tensor_ref_d.sync_device();
 
   // // Create instantiation for device reference gemm kernel
-  // DeviceGemmReference gemm_reference;
+  DeviceGemmReference gemm_reference;
 
   // // Launch device reference gemm kernel
-  // gemm_reference(
-  //   options.problem_size,
-  //   ElementAccumulator(options.alpha),
-  //   options.tensor_a.device_ref(),
-  //   options.tensor_b.device_ref(),
-  //   ElementAccumulator(options.beta),
-  //   options.tensor_c.device_ref(),
-  //   options.tensor_ref_d.device_ref());
+  gemm_reference(
+    options.problem_size,
+    ElementAccumulator(options.alpha),
+    options.tensor_a.device_ref(),
+    options.tensor_b.device_ref(),
+    ElementAccumulator(options.beta),
+    options.tensor_c.device_ref(),
+    options.tensor_ref_d.device_ref());
 
   // Wait for kernels to finish
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -562,25 +562,25 @@ int main(int argc, const char **argv)
   {
     // Compare basic data-parallel version versus StreamK version using default load-balancing heuristics
     Result basic_dp         = run<DeviceGemmBasic>("Basic data-parallel GEMM", options);
-    // Result streamk_default  = run<DeviceGemmStreamK>("StreamK GEMM with default load-balancing", options);
+    Result streamk_default  = run<DeviceGemmStreamK>("StreamK GEMM with default load-balancing", options);
 
-    // printf("  Speedup vs Basic-DP: %.3f\n", (basic_dp.avg_runtime_ms / streamk_default.avg_runtime_ms));
+    printf("  Speedup vs Basic-DP: %.3f\n", (basic_dp.avg_runtime_ms / streamk_default.avg_runtime_ms));
 
-    // Show that StreamK can emulate basic data-parallel GEMM when we set the number of SMs to load-balance across = 1
+    // // Show that StreamK can emulate basic data-parallel GEMM when we set the number of SMs to load-balance across = 1
     // options.avail_sms       = 1;        // Set loadbalancing width to 1 SM (no load balancing)
     // Result streamk_dp       = run<DeviceGemmStreamK>("StreamK emulating basic data-parallel GEMM", options);
     // options.avail_sms       = -1;       // Reset loadbalancing width to unspecified SMs (i.e., the number of device SMs)
 
     // printf("  Speedup vs Basic-DP: %.3f\n", (basic_dp.avg_runtime_ms / streamk_dp.avg_runtime_ms));
 
-    // options.split_k_factor++;     // Increment splitting factor for next evaluation
+    options.split_k_factor++;     // Increment splitting factor for next evaluation
 
   }
 
   // Show that StreamK can emulate "Split-K" with a tile-splitting factor
-  // Result basic_splitk = run<DeviceGemmBasic>(
-  //   std::string("Basic split-K GEMM with tile-splitting factor ") + std::to_string(options.split_k_factor),
-  //   options);
+  Result basic_splitk = run<DeviceGemmBasic>(
+    std::string("Basic split-K GEMM with tile-splitting factor ") + std::to_string(options.split_k_factor),
+    options);
 
   // Result streamk_splitk = run<DeviceGemmStreamK>(
   //    std::string("StreamK emulating Split-K GEMM with tile-splitting factor ") + std::to_string(options.split_k_factor),
@@ -588,11 +588,11 @@ int main(int argc, const char **argv)
 
   // printf("  Speedup vs Basic-SplitK: %.3f\n", (basic_splitk.avg_runtime_ms / streamk_splitk.avg_runtime_ms));
 
-  // options.split_k_factor++;
+  options.split_k_factor++;
 
-  // Result basic_splitk_2 = run<DeviceGemmBasic>(
-  //   std::string("Basic split-K GEMM with tile-splitting factor ") + std::to_string(options.split_k_factor),
-  //   options);
+  Result basic_splitk_2 = run<DeviceGemmBasic>(
+    std::string("Basic split-K GEMM with tile-splitting factor ") + std::to_string(options.split_k_factor),
+    options);
 
   // Result streamk_splitk_2 = run<DeviceGemmStreamK>(
   //    std::string("StreamK emulating Split-K GEMM with tile-splitting factor ") + std::to_string(options.split_k_factor),

@@ -18,6 +18,14 @@ sm__pipe_tensor_op_hmma_cycles_active,"
 
 metrics+="sm__sass_data_bytes_mem_global_op_ldgsts,\
 sm__sass_data_bytes_mem_shared_op_ldgsts,\
-sm__sass_inst_executed_op_ldgsts"
+sm__sass_inst_executed_op_ldgsts,"
+
+metrics+="l1tex__t_sectors_pipe_lsu_mem_global_op_ld,\
+lts__t_sectors_aperture_device,\
+dram__bytes_read.sum.per_second,\
+sm__sass_l1tex_m_xbar2l1tex_read_bytes_mem_global_op_ldgsts_cache_bypass.sum.per_second,\
+lts__t_request_hit_rate.pct,\
+lts__t_sector_hit_rate.pct"
+
 # --mode=launch --metrics $metrics
-/opt/nvidia/nsight-compute/2023.1.0/ncu  --target-processes all $exec_name $args
+/opt/nvidia/nsight-compute/2023.1.0/ncu  --target-processes all --metrics $metrics $exec_name $args

@@ -52,7 +52,7 @@
 namespace cutlass {
 namespace gemm {
 namespace threadblock {
-constexpr int target_iter = 2;
+constexpr int target_iter = 1;
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Structure to compute the matrix product targeting CUDA cores and SIMT math

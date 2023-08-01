@@ -3,7 +3,7 @@
 #! notice to delete the macro of clock
 # Define the range of values for 'target_iter' and 'num_stage'
 target_iter_values=()
-for i in {0..10}; do
+for i in {0..1}; do
   target_iter_values+=("$i")
 done
 num_stage_values=(3 4 5 6)
@@ -26,6 +26,6 @@ for num_stage in "${num_stage_values[@]}"; do
         sed -i "s/constexpr int NumStages   = [0-9]\+;/constexpr int NumStages   = $num_stage;/" $test_file_locate
         # Compile the modified files
         make $binary_name > /dev/null
-        cuobjdump -sass ./${binary_name} > stage_clock_stage_${num_stage}_target_iter_${target_iter}.sass
+        cuobjdump -sass ./${binary_name} > stage_clock_stage_${num_stage}_target_iter_${target_iter}_2.sass
     done
 done

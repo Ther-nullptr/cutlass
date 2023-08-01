@@ -9,3 +9,5 @@ build/
 
 CMakeCache.txt
 *.png
+
+*.txt
