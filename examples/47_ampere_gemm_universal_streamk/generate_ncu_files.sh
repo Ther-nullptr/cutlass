@@ -6,7 +6,7 @@ target_iter_values=(0)
 # for i in {0..10}; do
 #   target_iter_values+=("$i")
 # done
-num_stage_values=(6)
+num_stage_values=(4 6)
 
 mma_file_locate="/home/yujin/workspace/cutlass/include/cutlass/gemm/threadblock/mma_multistage.h"
 test_file_locate="/home/yujin/workspace/cutlass/examples/47_ampere_gemm_universal_streamk/ampere_gemm_universal_streamk.cu"
@@ -14,9 +14,9 @@ test_file_locate="/home/yujin/workspace/cutlass/examples/47_ampere_gemm_universa
 binary_name="47_ampere_gemm_universal_streamk"
 binary_dir="/home/yujin/workspace/cutlass/build/examples/47_ampere_gemm_universal_streamk"
 
-M=2048
-N=128
-K=8192
+M=4096
+N=4096
+K=4096
 SPLIT_K=1
 
 args="--m=$M --n=$N --k=$K --split=$SPLIT_K --iterations=1"

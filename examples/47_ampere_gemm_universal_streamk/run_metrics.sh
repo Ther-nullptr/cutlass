@@ -2,7 +2,7 @@
 
 #! notice to delete the macro of clock
 # Define the range of values for 'target_iter' and 'num_stage'
-num_stage_values=(3 4 5 6 7 8 9 10)
+num_stage_values=(3 4 5 6)
 
 mma_file_locate="/home/yujin/workspace/cutlass/include/cutlass/gemm/threadblock/mma_multistage.h"
 test_file_locate="/home/yujin/workspace/cutlass/examples/47_ampere_gemm_universal_streamk/ampere_gemm_universal_streamk.cu"
@@ -30,8 +30,10 @@ NCU="/opt/nvidia/nsight-compute/2023.1.0/ncu"
 metrics="l1tex__t_sectors_pipe_lsu_mem_global_op_ld,\
 lts__t_sectors_aperture_device,\
 dram__bytes_read.sum.per_second,\
-sm__sass_l1tex_m_xbar2l1tex_read_bytes_mem_global_op_ldgsts_cache_bypass.sum.per_second,\
-lts__t_request_hit_rate.pct,\
+l1tex__m_xbar2l1tex_read_bytes.sum.per_cycle_active,\
+l1tex__m_xbar2l1tex_read_bytes.sum.pct_of_peak_sustained_active,\
+l1tex__m_xbar2l1tex_read_bytes.sum.peak_sustained,\
+l1tex__m_xbar2l1tex_read_bytes.sum.per_second,\
 lts__t_sector_hit_rate.pct"
 
 cd $binary_dir
@@ -43,6 +45,6 @@ for num_stage in "${num_stage_values[@]}"; do
     make $binary_name > /dev/null
     # Run the program with the current values
     echo "Running with NumStages = $num_stage"
-    $NCU --target-processes all ./${binary_name} $args # | egrep -n "Block Limit Registers|Block Limit Shared Mem|Theoretical Occupancy|Achieved Occupancy|Waves Per SM"
-    # $NCU --target-processes all --metrics $metrics ./${binary_name} $args
+    # $NCU --target-processes all ./${binary_name} $args # | egrep -n "Block Limit Registers|Block Limit Shared Mem|Theoretical Occupancy|Achieved Occupancy|Waves Per SM"
+    $NCU --target-processes all --metrics $metrics ./${binary_name} $args
 done
